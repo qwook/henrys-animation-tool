@@ -1,0 +1,22 @@
+"AddonInfo"
+{
+	"name" "Henry's Animation Tool"
+	"author_name" "author"
+	"info" "Create smooth animations, just by posing!
+
+I started working on HAT way back in 2009, and back then it was called SMoSuite/Stop Motion Suite.
+Before, it just hopped from frame to frame without any transition.
+Now with Vector and Angle lerp-ing, frame to frame transitions smooth into each other.
+
+[b]***IMPORTANT***[/b]
+After downloading this addon, you need to bind a key to the +hat_menu console command.
+You can do this by opening the console ( ~ ) and typing "bind x +hat_menu"
+
+To select props and ragdolls to animate, open up the HAT menu and right click on a prop or ragdoll.
+To do finger facial, or eye animation, you need to right click on the ragdoll's face or hands. Just right clicking on the ragdoll will not record any facial/finger poses.
+
+You can select multiple props and ragdolls, they will all have different timelines.
+
+You can subscribe to my youtube channel here:
+[url=http://www.youtube.com/user/SuperFancyGentleman]http://www.youtube.com/user/SuperFancyGentleman[/url]"
+}
