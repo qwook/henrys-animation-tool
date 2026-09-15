@@ -39,7 +39,7 @@ function PANEL:Init()
 	[[
 		<html>
 			<body style="padding: 0px; margin: 0px;">
-				<iframe width="560" height="315" src="http://www.youtube.com/embed/Jg3DvQZFWwo?rel=0" frameborder="0" allowfullscreen></iframe>
+				<iframe width="560" height="315" src="https://www.youtube.com/embed/pUBdpmK37-I?si=SdZtJn6LWVOFKNEJ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 			</body>
 		</html>
 	]]
@@ -189,7 +189,39 @@ function PANEL:Init()
 			textEntry:SetPos( 10, 245 )
 			
 			local function open()
-				RunConsoleCommand( "hat_load", fileList:GetCurrentDirectory() .. textEntry:GetText() )
+				local file = fileList:GetCurrentDirectory() .. textEntry:GetText()
+				local confirm = vgui.Create( "DFrame" )
+				local label = vgui.Create( "DLabel", confirm )
+				local okayBtn = vgui.Create( "DButton", confirm )
+				local cancelBtn = vgui.Create( "DButton", confirm )
+				confirm:SetSize( 300, 115 )
+				confirm:SetTitle( "Are you sure?" )
+				confirm:Center()
+				confirm:SetVisible( true )
+				confirm:ShowCloseButton( true )
+				confirm:MakePopup()
+				confirm:SetDeleteOnClose( true )
+				confirm:SetDraggable( false )
+
+				label:SetText("Opening this file will remove all objects in this map.\nAre you sure you want to do this?")
+				label:SetPos(10, 35);
+				label:SetSize( 380, 40 )
+
+				okayBtn:SetPos( 10, 80 )
+				okayBtn:SetSize( 65, 20 )
+				okayBtn:SetText( "Okay" )
+				okayBtn.DoClick = function( self )
+					RunConsoleCommand( "hat_load", file )
+					confirm:Close()
+				end
+
+				cancelBtn:SetPos( 80, 80 )
+				cancelBtn:SetSize( 65, 20 )
+				cancelBtn:SetText( "Cancel" )
+				cancelBtn.DoClick = function( self )
+					confirm:Close()
+				end
+
 				fileBrowser:Close()
 			end
 			

@@ -1,6 +1,5 @@
 
 include("hands.lua")
-require("hon")
 
 HAT_DEFAULT_LENGTH = 0.25
 
@@ -693,7 +692,7 @@ concommand.Add( "hat_save", function( pl, cmd, args )
 		end
 	end
 
-	toSave = honsolo.encode( toSave )
+	toSave = util.TableToJSON( toSave );
 
 	if not file.IsDir("hat", "DATA") then
 		file.CreateDir( "hat" )
@@ -720,7 +719,7 @@ concommand.Add( "hat_load", function( pl, cmd, args )
 	end
 
 	toLoad = file.Read(fileName .. ".txt", "DATA")
-	toLoad = honsolo.decode( toLoad )
+	toLoad = util.JSONToTable( toLoad )
 
 	local tempTrans = {}
 

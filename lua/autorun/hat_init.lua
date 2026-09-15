@@ -16,7 +16,7 @@ AddCSLuaFile("hat/cl_hat.lua")
 AddCSLuaFile("hat/cl_hat_onionskin.lua")
 AddCSLuaFile("hat/hatskin.lua")
 AddCSLuaFile("autorun/hat_init.lua")
-AddCSLuaFile("gQuery.lua")
+AddCSLuaFile("gquery.lua")
 
 util.AddNetworkString( "hat_select" )
 util.AddNetworkString( "hat_remove" )
@@ -146,10 +146,10 @@ local function loadHAT( cmd, args )
 		include("hat/vgui/dfile.lua")
 		include("hat/cl_hat.lua")
 		include("hat/cl_hat_onionskin.lua")
-		include("gQuery.lua")
+		include("gquery.lua")
 	else
 		include("hat/hat.lua")
-		include("gQuery.lua")
+		include("gquery.lua")
 	end
 
 	_G.hook = olHook

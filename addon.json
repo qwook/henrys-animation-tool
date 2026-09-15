@@ -1,0 +1,6 @@
+{
+  "title": "Henry's Animation Tool",
+  "type": "tool",
+  "tags": ["movie"],
+  "ignore": ["*.psd", "*.vcproj", "*.svn*"]
+}
