@@ -1,40 +1,48 @@
--- Server-side onion-skin ghost: a semi-transparent duplicate of the posed entity, showing the
--- previous frame's pose while editing the current one. Split out of hat.lua.
+-- Server-side onion-skin ghosts: semi-transparent duplicates of the posed entity. Multiple
+-- independent, named ghosts can be shown at once - e.g. "prev" for the previous frame's pose
+-- while editing the current one, and "current" for the current frame's own last-captured pose
+-- (so posing drift after selecting a frame can be compared back against what's actually saved).
+-- Split out of hat.lua.
 -- (Separate from lua/hat/cl_hat_onionskin.lua, which is an unrelated clientside-model preview.)
 
 HAT = HAT or {}
+HAT.onionEntities = HAT.onionEntities or {}
 
--- Desc: (re)spawns HAT.onionEntity to match ent's model if needed, then poses its bones from `bones`.
-function HAT.playOnionSkin( ent, bones )
+-- Desc: (re)spawns the `slot` onion-skin ghost to match ent's model if needed, then poses its
+-- bones from `bones`.
+function HAT.playOnionSkin( slot, ent, bones, color )
+	local onion = HAT.onionEntities[slot]
 
-	if IsValid(HAT.onionEntity) and ent:GetModel() ~= HAT.onionEntity:GetModel() then
-		HAT.onionEntity:Remove()
+	if IsValid(onion) and ent:GetModel() ~= onion:GetModel() then
+		onion:Remove()
+		onion = nil
 	end
 
-	if not IsValid(HAT.onionEntity) then
+	if not IsValid(onion) then
 		if ent:GetClass() == "prop_ragdoll" then
-			HAT.onionEntity = gQuery.Create("prop_ragdoll")
+			onion = gQuery.Create("prop_ragdoll")
 		else
-			HAT.onionEntity = gQuery.Create("prop_dynamic")
+			onion = gQuery.Create("prop_dynamic")
 		end
 
-		HAT.onionEntity
+		onion
 			:SetModel(ent:GetModel())
-			:SetColor(Color(0, 255, 255, 125))
+			:SetColor(color or Color(0, 255, 255, 125))
 			:SetRenderMode(RENDERMODE_TRANSCOLOR)
 			:SetCollisionGroup(COLLISION_GROUP_NONE)
 			:SetNotSolid(true)
 			:SetNWBool( "ignore", true )
 			:Spawn()
 
+		HAT.onionEntities[slot] = onion
 	end
 
-	HAT.onionEntity
+	onion
 		:SetPos( ent:GetPos() )
 		:SetAngles( ent:GetAngles() )
 
 	for i,v in pairs( bones ) do
-		local physObj = gQuery(HAT.onionEntity:GetPhysicsObjectNum( i - 1 ))
+		local physObj = gQuery(onion:GetPhysicsObjectNum( i - 1 ))
 			:SetPos(v.pos)
 			:SetAngles(v.ang)
 			:EnableMotion(false)
@@ -44,10 +52,18 @@ function HAT.playOnionSkin( ent, bones )
 
 end
 
--- Desc: removes the onion-skin ghost, if any.
-function HAT.clearOnionSkin()
-	if IsValid(HAT.onionEntity) then
-		HAT.onionEntity:Remove()
+-- Desc: removes the `slot` onion-skin ghost, or every ghost if `slot` is nil.
+function HAT.clearOnionSkin( slot )
+	if slot then
+		if IsValid(HAT.onionEntities[slot]) then
+			HAT.onionEntities[slot]:Remove()
+		end
+		HAT.onionEntities[slot] = nil
+	else
+		for _, onion in pairs(HAT.onionEntities) do
+			if IsValid(onion) then onion:Remove() end
+		end
+		HAT.onionEntities = {}
 	end
 end
 

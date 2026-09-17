@@ -106,6 +106,3 @@ hook.Add("PlayerBindPress", "HATOverrideJump", function(pl, bind, pressed)
 	return true
 end)
 
--- Check if hat_menu or hat_toggle are binded.
-local key = input.LookupBinding("+hat_menu")
-print("my_command is bound to: " .. tostring(key))

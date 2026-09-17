@@ -244,9 +244,28 @@ function HAT.selectFrame( objID, frame )
 			}
 		end
 
-		HAT.playOnionSkin( obj.ent, bones )
+		HAT.playOnionSkin( "prev", obj.ent, bones, Color(0, 255, 255, 125) )
 	else
-		HAT.clearOnionSkin()
+		HAT.clearOnionSkin( "prev" )
+	end
+
+	-- A second ghost showing the current frame's own last-captured pose (if it has one), so
+	-- posing drift after selecting a frame can be compared back against what's actually saved
+	-- before Replace Frame overwrites it.
+	if obj.frames[obj.cur] and obj.frames[obj.cur].physbones then
+		local physbones = obj.frames[obj.cur].physbones
+
+		local bones = {}
+		for i,v in pairs( physbones ) do
+			bones[i] = {
+				pos = v.pos,
+				ang = v.ang
+			}
+		end
+
+		HAT.playOnionSkin( "current", obj.ent, bones, Color(255, 0, 255, 125) )
+	else
+		HAT.clearOnionSkin( "current" )
 	end
 
 	HAT.updateOtherObjects( objID, frame )

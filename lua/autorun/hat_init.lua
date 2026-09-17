@@ -12,6 +12,7 @@ if SERVER then
 	AddCSLuaFile("hat/vgui/dfilelist.lua")
 	AddCSLuaFile("hat/cl_hat.lua")
 	AddCSLuaFile("hat/cl_hat_onionskin.lua")
+	AddCSLuaFile("hat/cl_hat_onboarding.lua")
 	AddCSLuaFile("hat/hatskin.lua")
 	AddCSLuaFile("autorun/hat_init.lua")
 	AddCSLuaFile("gquery.lua")
@@ -140,6 +141,7 @@ local function loadHAT(cmd, args)
 		include("hat/vgui/dhattoolbar.lua")
 		include("hat/cl_hat.lua")
 		include("hat/cl_hat_onionskin.lua")
+		include("hat/cl_hat_onboarding.lua")
 		include("gquery.lua")
 	else
 		include("hat/sv_hat_data.lua")
@@ -202,8 +204,8 @@ function unloadHAT(cmd, args)
 		vguiList = {}
 	end
 
-	if SERVER and HAT and IsValid(HAT.onionEntity) then
-		HAT.onionEntity:Remove()
+	if SERVER and HAT and HAT.clearOnionSkin then
+		HAT.clearOnionSkin()
 	end
 end
 
