@@ -17,6 +17,8 @@ PANEL = {}
 
 AccessorFunc( PANEL, "m_Color", "Color" )
 AccessorFunc( PANEL, "m_Padding", "Padding" )
+AccessorFunc( PANEL, "m_Toggle", "Toggle" )
+AccessorFunc( PANEL, "m_Value", "Value" )
 
 function PANEL:Init()
 
@@ -24,6 +26,20 @@ function PANEL:Init()
 	self.Label = ""
 	self.m_Color = Color( 120, 120, 120 )
 	self.m_Padding = 8
+	self.m_Toggle = false
+	self.m_Value = false
+
+end
+
+--
+-- When toggle mode is enabled, clicking the button flips its Value instead
+-- of relying on Depressed (which only reflects the mouse being held down).
+--
+function PANEL:DoClick()
+
+	if self.m_Toggle then
+		self:SetValue( not self.m_Value )
+	end
 
 end
 
@@ -60,7 +76,8 @@ end
 
 function PANEL:Paint( w, h )
 
-	hatskin.drawGenericButton( self.Label, w, h, self:GetColor(), self.Depressed, self.Hovered )
+	local depressed = self.Depressed or ( self.m_Toggle and self.m_Value )
+	hatskin.drawGenericButton( self.Label, w, h, self:GetColor(), depressed, self.Hovered )
 
 	return true
 

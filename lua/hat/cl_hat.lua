@@ -78,12 +78,32 @@ net.Receive("hat_send_data", function()
 	hatMenu:Load(toLoad)
 end)
 
+net.Receive("hat_loop", function()
+	hatMenu:SetLoop(net.ReadBool())
+end)
+
 -- CLIENT
 net.Receive("hat_error", function()
     local msg = net.ReadString()
     local duration = net.ReadFloat()
     notification.AddLegacy(msg, NOTIFY_ERROR, duration)
     surface.PlaySound("hl1/fvox/blip.wav") -- error sound
+end)
+
+-- While the menu is open, jumping toggles playback instead of making the player jump: play the
+-- timeline, or stop it if it's already playing.
+hook.Add("PlayerBindPress", "HATOverrideJump", function(pl, bind, pressed)
+	if not pressed then return end
+	if not hatMenu:IsVisible() then return end
+	if bind ~= "+jump" then return end
+
+	if hatMenu.frameHolder.StartTime then
+		RunConsoleCommand("hat_stop")
+	else
+		RunConsoleCommand("hat_play")
+	end
+
+	return true
 end)
 
 -- Check if hat_menu or hat_toggle are binded.

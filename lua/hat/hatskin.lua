@@ -182,6 +182,13 @@ function hatskin.drawFrameTitleBar(x, y, w, h)
 	hatskin.sprite.frameTitleBarBL(x, y + h - border, leftW, border)
 	hatskin.sprite.frameTitleBarB(x + leftW, y + h - border, midW, border)
 	hatskin.sprite.frameTitleBarBR(x + w - rightW, y + h - border, rightW, border)
+
+
+		surface.SetFont("Arial18");
+		surface.SetTextPos(10, 5);
+		surface.SetTextColor(200, 200, 200);
+		surface.DrawText("Henry's Animation Tool", false);
+
 end
 
 function hatskin.drawFrame(x, y, w, h)

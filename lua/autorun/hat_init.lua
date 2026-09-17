@@ -27,6 +27,7 @@ if SERVER then
 	util.AddNetworkString("hat_send_data")
 	util.AddNetworkString("hat_onionskin")
 	util.AddNetworkString("hat_error")
+	util.AddNetworkString("hat_loop")
 else
 	hatUI = Material("hat/hatui.png")
 end

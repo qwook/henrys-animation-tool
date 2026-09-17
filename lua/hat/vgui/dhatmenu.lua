@@ -56,12 +56,61 @@ function PANEL:Init()
 	self.toolbar = vgui.Create("DHatToolbar", self.mainSheet)
 	self.toolbar:SetPaintBackground(false)
 
-	-- Record Button
+	-- New Frame Button (creates a new frame, snapshotted with the current pose)
+	self.newButton = self.toolbar:AddButton("DHatButton")
+	self.newButton:SetText("● New Frame")
+	self.newButton:SetColor(Color(200, 0, 0))
+
+	self.newButton.OlOnMousePressed = self.newButton.OnMousePressed
+	self.newButton.OlOnMouseReleased = self.newButton.OnMouseReleased
+
+	-- By this point, I might as well have created my own button.
+	self.newButton.OnMousePressed = function(self)
+		hatMenu:DragNewFrame()
+		return self:OlOnMousePressed()
+	end
+
+	self.newButton.OnMouseReleased = function(self)
+		hatMenu:FinishDragNewFrame(not self.Hovered)
+		if self.Hovered then
+			-- A plain click (no drag onto the strip) inserts right after the selected frame,
+			-- rather than always appending to the end.
+			local frameHolder = hatMenu.frameHolder
+			local entData = frameHolder.Entities[frameHolder.CurEntity]
+			local pos = entData and entData.SelectedFrame and (entData.SelectedFrame + 1)
+			if pos then
+				RunConsoleCommand("hat_frame_add", pos)
+			else
+				RunConsoleCommand("hat_frame_add")
+			end
+		end
+		return self:OlOnMouseReleased()
+	end
+
+	-- Replace Frame Button (re-snapshots the current pose into the highlighted frame)
 	self.recordButton = self.toolbar:AddButton("DHatButton")
-	self.recordButton:SetText("● Snapshot")
-	self.recordButton:SetColor(Color(200, 0, 0))
+	self.recordButton:SetText("Replace Frame")
+	self.recordButton:SetColor(Color(120, 120, 120))
 	self.recordButton.DoClick = function()
-		RunConsoleCommand("hat_frame_snapshot")
+		-- Snapshot into whatever frame is actually highlighted, not the server's implicit
+		-- "current frame" cursor (scrubbing moves the highlight without moving that cursor).
+		local frameHolder = hatMenu.frameHolder
+		local entData = frameHolder.Entities[frameHolder.CurEntity]
+		local frame = entData and entData.SelectedFrame
+		RunConsoleCommand("hat_frame_snapshot", frame)
+	end
+
+	-- Delete Frame Button (removes the currently highlighted frame)
+	self.deleteButton = self.toolbar:AddButton("DHatButton")
+	self.deleteButton:SetText("Delete Frame")
+	self.deleteButton:SetColor(Color(120, 120, 120))
+	self.deleteButton.DoClick = function()
+		local frameHolder = hatMenu.frameHolder
+		local entData = frameHolder.Entities[frameHolder.CurEntity]
+		local frame = entData and entData.SelectedFrame
+		if frame then
+			RunConsoleCommand("hat_frame_remove", frame)
+		end
 	end
 
 	-- Play Button
@@ -80,26 +129,13 @@ function PANEL:Init()
 		RunConsoleCommand("hat_stop")
 	end
 
-	-- New Frame Button
-	self.newButton = self.toolbar:AddButton("DHatButton")
-	self.newButton:SetText("New Frame")
-	self.newButton:SetColor(Color(120, 120, 120))
-
-	self.newButton.OlOnMousePressed = self.newButton.OnMousePressed
-	self.newButton.OlOnMouseReleased = self.newButton.OnMouseReleased
-
-	-- By this point, I might as well have created my own button.
-	self.newButton.OnMousePressed = function(self)
-		hatMenu:DragNewFrame()
-		return self:OlOnMousePressed()
-	end
-
-	self.newButton.OnMouseReleased = function(self)
-		hatMenu:FinishDragNewFrame(not self.Hovered)
-		if self.Hovered then
-			RunConsoleCommand("hat_frame_add")
-		end
-		return self:OlOnMouseReleased()
+	-- Loop Toggle Button (off by default; state is saved with the animation)
+	self.loopButton = self.toolbar:AddButton("DHatButton")
+	self.loopButton:SetText("Loop")
+	self.loopButton:SetColor(Color(120, 120, 120))
+	self.loopButton:SetToggle(true)
+	self.loopButton.DoClick = function()
+		RunConsoleCommand("hat_toggle_loop")
 	end
 
 	-- Menu Bar
@@ -282,11 +318,18 @@ function PANEL:Init()
 	slider:SetMax(4)
 	slider:SetDecimals(4)
 	slider:SetConVar("hat_playrate")
+	-- Not check:SetConVar("hat_stopmotion"): hat_stopmotion is a server-only ConVar (see
+	-- sv_hat_data.lua), so the client has no local copy for SetConVar's GetConVarNumber-based
+	-- binding to read back - it kept resetting the checkbox to unchecked. Drive it manually
+	-- with RunConsoleCommand instead, like every other client->server action in this addon.
 	local check = vgui.Create("DCheckBoxLabel", self.playOptions)
 	check:SetWide(300)
 	check:SetPos(5, 55)
 	check:SetText("Stop Motion")
-	check:SetConVar("hat_stopmotion")
+	check:SetChecked(false)
+	check.OnChange = function(self, val)
+		RunConsoleCommand("hat_stopmotion", val and "1" or "0")
+	end
 	self.playOptions:SetVisible(false)
 
 	self.optionsMenu = self.menuBar:AddMenu("Options")
@@ -323,6 +366,7 @@ PANEL.SetIcon = PANEL.SetImage
 
 function PANEL:Load(toLoad)
 	self.frameHolder:Load(toLoad)
+	self:SetLoop(toLoad.loop or false)
 	timer.Simple(0.01, function()
 		if toLoad.currentObjId and toLoad.objects[toLoad.currentObjId] then
 			self.SelectedEnt = ents.GetByIndex(toLoad.objects[toLoad.currentObjId].ent)
@@ -367,6 +411,11 @@ end
 
 function PANEL:Stop()
 	self.frameHolder:Stop()
+end
+
+-- Desc: reflects the server's loop state (set on load, or synced live after a toggle) on the button.
+function PANEL:SetLoop(loop)
+	self.loopButton:SetValue(loop)
 end
 
 function PANEL:FinishDragNewFrame(shouldMakeNewFrame)
@@ -500,9 +549,9 @@ function PANEL:PerformLayout(width, height)
 	self.mainSheet:SetSize(ScrW(), 200)
 
 	self.frameHolder:SetPos(10, 36)
-	self.frameHolder:SetSize(ScrW() - 24, 100)
+	self.frameHolder:SetSize(ScrW() - 24, 110)
 
-	self.toolbar:SetPos(0, mainSheetHeight - 40 - 5)
+	self.toolbar:SetPos(5, mainSheetHeight - 40 - 5)
 	self.toolbar:SetSize(ScrW(), 40)
 end
 

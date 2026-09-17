@@ -30,6 +30,23 @@ function HAT.getTimeFromFrame( objID, frameID )
 	return length
 end
 
+-- Desc: total timeline length (seconds), the longest of every object's summed frame lengths.
+function HAT.getTotalTime()
+	local total = 0
+
+	for _, obj in pairs(HAT.objects) do
+		local length = 0
+		for _, frame in pairs(obj.frames) do
+			if frame and frame.length then
+				length = length + frame.length
+			end
+		end
+		total = math.max(total, length)
+	end
+
+	return total
+end
+
 -- Desc: true if num is an integer (frame indices must be whole numbers).
 function HAT.isWholeNumber( num )
 	local num = tonumber(num)
@@ -37,16 +54,18 @@ function HAT.isWholeNumber( num )
 	return math.ceil(num) == num
 end
 
--- Desc: halts playback and re-selects the current frame of the active object.
+-- Desc: halts playback, leaving the shared scrubber at whatever timeline position playback had
+-- reached, so a later Play resumes from here rather than from wherever it was last scrubbed to.
 function HAT.stop()
 	if HAT.playOn then
 		HAT.playOn = false
+
+		HAT.scrubTime = math.max( CurTime() * HAT_PlayRate:GetFloat() - HAT.playStart, 0 )
+		HAT.playStart = CurTime() * HAT_PlayRate:GetFloat() - HAT.scrubTime
+		HAT.playLastFrame = CurTime() * HAT_PlayRate:GetFloat()
+
 		net.Start( "hat_stop" )
 		net.Broadcast()
-		local obj = HAT.objects[objID]
-		if obj then
-			HAT.selectFrame( HAT.currentObjId, obj.cur or 1  )
-		end
 	end
 end
 
@@ -66,33 +85,25 @@ function HAT.newObject( ent )
 
 	HAT.entityTrans[ent] = {
 		table.insert(HAT.objects, {
-			frames = {
-				HAT.blankFrame();
-			};
+			frames = {};
 			ent = ent;
 			cur = 1;
 			posetype = HAT_SELECT_ENTITY;
 		});
 		table.insert(HAT.objects, {
-			frames = {
-				HAT.blankFrame();
-			};
+			frames = {};
 			ent = ent;
 			cur = 1;
 			posetype = HAT_SELECT_FACE;
 		});
 		table.insert(HAT.objects, {
-			frames = {
-				HAT.blankFrame();
-			};
+			frames = {};
 			ent = ent;
 			cur = 1;
 			posetype = HAT_SELECT_L_HAND;
 		});
 		table.insert(HAT.objects, {
-			frames = {
-				HAT.blankFrame();
-			};
+			frames = {};
 			ent = ent;
 			cur = 1;
 			posetype = HAT_SELECT_R_HAND;
@@ -240,13 +251,20 @@ function HAT.selectFrame( objID, frame )
 
 	HAT.updateOtherObjects( objID, frame )
 
+	-- Move the shared scrubber to this frame's start time, so Play resumes from here and the
+	-- client's timeline playhead follows the selection.
+	HAT.scrubTime = HAT.getTimeFromFrame( objID, frame )
+	HAT.playStart = CurTime() * HAT_PlayRate:GetFloat() - HAT.scrubTime
+	HAT.playLastFrame = CurTime() * HAT_PlayRate:GetFloat()
+
 	net.Start( "hat_frame_select" )
 		net.WriteUInt( objID, 16 )
 		net.WriteUInt( frame, 32 )
 	net.Broadcast()
 end
 
--- Desc: inserts a blank frame (at a position, or appended) and selects it.
+-- Desc: inserts a blank frame (at a position, or appended), snapshots the object's current
+-- pose into it, and selects it.
 function HAT.addFrame( objID, frame )
 	HAT.stop()
 
@@ -257,8 +275,11 @@ function HAT.addFrame( objID, frame )
 	if HAT.isWholeNumber( frame ) and frame > 0 and frame <= #obj.frames then
 		table.insert( obj.frames, frame, HAT.blankFrame() )
 	else
-		frame = table.insert( obj.frames, HAT.blankFrame() )
+		table.insert( obj.frames, HAT.blankFrame() )
+		frame = #obj.frames
 	end
+
+	HAT.snapShotFrame( objID, frame )
 
 	net.Start( "hat_frame_add" )
 		net.WriteUInt( objID, 16 )

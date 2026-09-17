@@ -37,6 +37,27 @@ concommand.Add("hat_select", function(pl, cmd, args)
 	end
 end)
 
+-- Desc: selects an already-existing pose object directly by its id (used when clicking a row
+-- in the frame-strip timeline, which already knows which object/posetype that row is).
+concommand.Add("hat_select_object", function(pl, cmd, args)
+	HAT.stop()
+	if not HAT.isWholeNumber(args[1]) then return end
+
+	local objID = tonumber(args[1])
+	local obj = HAT.objects[objID]
+	if not obj or not IsValid(obj.ent) then return end
+
+	HAT.currentObjId = objID
+
+	net.Start("hat_select")
+	net.WriteUInt(objID, 16)
+	net.WriteEntity(obj.ent)
+	net.WriteUInt(obj.posetype or HAT_SELECT_ENTITY, 16)
+	net.Broadcast()
+
+	HAT.selectFrame(objID, obj.cur or 1)
+end)
+
 concommand.Add("hat_frame_select", function(pl, cmd, args)
 	HAT.stop()
 	if not HAT.isWholeNumber(args[1]) then return end
@@ -53,7 +74,7 @@ concommand.Add("hat_frame_add", function(pl, cmd, args)
 		HAT.addFrame(HAT.currentObjId, tonumber(args[1]))
 	else
 		net.Start("hat_error")
-		net.WriteString("Select something to animate first.")
+		net.WriteString("Select something to animate first. (Right Click)")
 		net.WriteFloat(5)
 		net.Send(pl)
 	end
@@ -84,17 +105,19 @@ end)
 
 concommand.Add("hat_frame_snapshot", function(pl, cmd, args)
 	HAT.stop()
-	HAT.snapShotFrame(HAT.currentObjId)
+	HAT.snapShotFrame(HAT.currentObjId, tonumber(args[1]))
 end)
 
--- Desc: starts synchronized playback of every pose object from its current frame's timestamp.
+-- Desc: starts synchronized playback of every pose object from the shared scrubber position
+-- (HAT.scrubTime, kept up to date by both scrubbing and clicking a frame), not from elapsed real
+-- time, which would drift by however long the user waited before pressing Play.
 concommand.Add("hat_play", function(pl, cmd, args)
-	local offset = 0
+	local offset = HAT.scrubTime
 
-	local obj = HAT.objects[HAT.currentObjId]
-
-	if obj then
-		offset = HAT.getTimeFromFrame(HAT.currentObjId, obj.cur)
+	-- If the scrubber is parked at (or past) the end of the timeline, play from the start
+	-- instead of doing nothing.
+	if offset >= HAT.getTotalTime() then
+		offset = 0
 	end
 
 	HAT.clearOnionSkin()
@@ -110,13 +133,32 @@ concommand.Add("hat_play", function(pl, cmd, args)
 		v.Playing = true
 	end
 
+	-- Broadcast the timeline offset (seconds into playback), not the raw server-clock playStart:
+	-- clients rebuild StartTime from their own CurTime(), so the scrubber doesn't depend on the
+	-- server and client clocks lining up.
 	net.Start("hat_play")
-	net.WriteFloat(HAT.playStart)
+	net.WriteFloat(offset)
 	net.Broadcast()
 end)
 
+-- Desc: stops playback if it's running; otherwise (already stopped) rewinds the scrubber to 0.
 concommand.Add("hat_stop", function(pl, cmd, args)
-	HAT.stop()
+	if HAT.playOn then
+		HAT.stop()
+	elseif HAT.currentObjId and HAT.objects[HAT.currentObjId] then
+		HAT.selectFrame(HAT.currentObjId, 1)
+	end
+end)
+
+-- Desc: scrubbing support: jumps every pose object's pose to timeline time args[1] (seconds)
+-- without touching which frame is selected for editing.
+concommand.Add("hat_seek", function(pl, cmd, args)
+	HAT.seek( tonumber(args[1]) or 0 )
+end)
+
+-- Desc: flips whether playback loops after every object finishes, and syncs the new state to clients.
+concommand.Add("hat_toggle_loop", function(pl, cmd, args)
+	HAT.setLoop( not HAT.loop )
 end)
 
 -- Desc: serializes every pose object to a .hat.txt file under data/hat/.
@@ -129,7 +171,7 @@ concommand.Add("hat_save", function(pl, cmd, args)
 		fileName = fileName .. ".hat"
 	end
 
-	local toSave = { objects = table.Copy(HAT.objects), currentObjId = HAT.currentObjId, version = HAT_VERSION }
+	local toSave = { objects = table.Copy(HAT.objects), currentObjId = HAT.currentObjId, version = HAT_VERSION, loop = HAT.loop }
 
 	local tempTrans = {}
 
@@ -208,8 +250,9 @@ concommand.Add("hat_load", function(pl, cmd, args)
 
 	HAT.currentObjId = toLoad.currentObjId
 	HAT.objects = toLoad.objects
+	HAT.loop = toLoad.loop or false
 
-	local toSend = { currentObjId = HAT.currentObjId, objects = {} }
+	local toSend = { currentObjId = HAT.currentObjId, objects = {}, loop = HAT.loop }
 	for k, v in pairs(HAT.objects) do
 		toSend.objects[k] = { frames = {}, ent = v.ent:EntIndex() }
 		for _, v in ipairs(v.frames) do
@@ -236,9 +279,10 @@ concommand.Add("hat_new", function(pl, cmd, args)
 	HAT.entityTrans = {}
 	HAT.objects = {}
 	HAT.currentObjId = nil
+	HAT.loop = false
 
 	net.Start("hat_send_data")
-	net.WriteTable({ objects = {} })
+	net.WriteTable({ objects = {}, loop = HAT.loop })
 	net.Broadcast()
 end)
 

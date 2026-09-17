@@ -6,14 +6,26 @@ HAT.playOn = false
 HAT.playStart = 0
 HAT.playLastFrame = 0 -- to calculate delta time
 HAT.playObject = 0
+HAT.scrubTime = 0 -- shared timeline position (seconds), set by scrubbing or clicking a frame; Play resumes from here.
+HAT.loop = false -- whether playback restarts from frame 1 when every object finishes; saved with the animation.
 
--- Desc: lerps obj's pose between frame-1 and frame by delta (0-1) and applies it.
+-- Desc: sets the loop flag and syncs it to every client's Loop toggle button.
+function HAT.setLoop( loop )
+	HAT.loop = loop
+
+	net.Start( "hat_loop" )
+		net.WriteBool( HAT.loop )
+	net.Broadcast()
+end
+
+-- Desc: lerps obj's pose from frame towards frame+1 by delta (0-1) and applies it. The last
+-- frame has no successor to lerp towards, so it just holds its own pose (a paused linger).
 function HAT.applyPose( obj, frame, delta )
 
-	local frameFrom = obj.frames[frame - 1]
-	local frameTo = obj.frames[frame]
+	local frameFrom = obj.frames[frame]
+	local frameTo = obj.frames[frame + 1]
 
-	if not frameFrom and frameTo then frameFrom = frameTo end
+	if not frameTo and frameFrom then frameTo = frameFrom end
 	if not frameFrom or not frameTo then return end
 
 	local physbonesFrom = frameFrom.physbones
@@ -116,6 +128,7 @@ function HAT.seek( t )
 	-- Keep the Think hook's localTime lined up with t so playback resumes from here if playOn.
 	HAT.playStart = CurTime() * HAT_PlayRate:GetFloat() - t
 	HAT.playLastFrame = CurTime() * HAT_PlayRate:GetFloat()
+	HAT.scrubTime = t
 
 end
 
@@ -126,6 +139,7 @@ function HAT.replay()
 	HAT.playStart = CurTime() * HAT_PlayRate:GetFloat()
 	HAT.playLastFrame = 1
 	HAT.playObject = #HAT.objects
+	HAT.scrubTime = 0
 
 	for k,v in pairs(HAT.objects) do
 
@@ -135,8 +149,9 @@ function HAT.replay()
 
 	end
 
+	-- offset is 0: replay always restarts from the beginning of the timeline.
 	net.Start( "hat_play" )
-		net.WriteFloat( HAT.playStart )
+		net.WriteFloat( 0 )
 	net.Broadcast()
 
 end
@@ -180,7 +195,11 @@ hook.Add("Think", "HAT_Play", function()
 	end
 
 	if HAT.playObject == 0 then
-		HAT.replay()
+		if HAT.loop then
+			HAT.replay()
+		else
+			HAT.stop()
+		end
 	end
 
 end)
