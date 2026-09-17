@@ -5,7 +5,10 @@ local vgui = vgui
    _| |   __   _ __   ___ ___     _ _ 
  /'_` | /'__`\( '__)/' _ ` _ `\ /'_` )
 ( (_| |(  ___/| |   | ( ) ( ) |( (_| |
-`\__,_)`\____)(_)   (_) (_) (_)`\__,_) 
+`\__,_)`\____)(_)   (_) (_) (_)`\__,_)
+
+	DFileList - directory browser listing .hat.txt save files from the DATA path, built from
+	DFile rows.
 
 --]]
 

@@ -5,7 +5,9 @@ local vgui = vgui
    _| |   __   _ __   ___ ___     _ _ 
  /'_` | /'__`\( '__)/' _ ` _ `\ /'_` )
 ( (_| |(  ___/| |   | ( ) ( ) |( (_| |
-`\__,_)`\____)(_)   (_) (_) (_)`\__,_) 
+`\__,_)`\____)(_)   (_) (_) (_)`\__,_)
+
+	DFile - a single clickable row (icon + label) used inside DFileList for one file/folder.
 
 --]]
 

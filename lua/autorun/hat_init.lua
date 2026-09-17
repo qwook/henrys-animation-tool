@@ -1,4 +1,3 @@
-
 -- This file loads before everything else and is supposed to be a debug wrapper for HAT
 -- Just helps out with debugging and reloading HAT.
 
@@ -7,32 +6,29 @@ HAT_VERSION = 4
 MsgN("Initiating Henry's Animation Tool ...")
 
 if SERVER then
+	AddCSLuaFile("hat/vgui/dframeholder.lua")
+	AddCSLuaFile("hat/vgui/dhatmenu.lua")
+	AddCSLuaFile("hat/vgui/dfile.lua")
+	AddCSLuaFile("hat/vgui/dfilelist.lua")
+	AddCSLuaFile("hat/cl_hat.lua")
+	AddCSLuaFile("hat/cl_hat_onionskin.lua")
+	AddCSLuaFile("hat/hatskin.lua")
+	AddCSLuaFile("autorun/hat_init.lua")
+	AddCSLuaFile("gquery.lua")
 
-AddCSLuaFile("hat/vgui/dframeholder.lua")
-AddCSLuaFile("hat/vgui/dhatmenu.lua")
-AddCSLuaFile("hat/vgui/dfile.lua")
-AddCSLuaFile("hat/vgui/dfilelist.lua")
-AddCSLuaFile("hat/cl_hat.lua")
-AddCSLuaFile("hat/cl_hat_onionskin.lua")
-AddCSLuaFile("hat/hatskin.lua")
-AddCSLuaFile("autorun/hat_init.lua")
-AddCSLuaFile("gquery.lua")
-
-util.AddNetworkString( "hat_select" )
-util.AddNetworkString( "hat_remove" )
-util.AddNetworkString( "hat_play" )
-util.AddNetworkString( "hat_stop" )
-util.AddNetworkString( "hat_frame_select" )
-util.AddNetworkString( "hat_frame_add" )
-util.AddNetworkString( "hat_frame_remove" )
-util.AddNetworkString( "hat_frame_move" )
-util.AddNetworkString( "hat_send_data" )
-util.AddNetworkString( "hat_onionskin" )
-
+	util.AddNetworkString("hat_select")
+	util.AddNetworkString("hat_remove")
+	util.AddNetworkString("hat_play")
+	util.AddNetworkString("hat_stop")
+	util.AddNetworkString("hat_frame_select")
+	util.AddNetworkString("hat_frame_add")
+	util.AddNetworkString("hat_frame_remove")
+	util.AddNetworkString("hat_frame_move")
+	util.AddNetworkString("hat_send_data")
+	util.AddNetworkString("hat_onionskin")
+	util.AddNetworkString("hat_error")
 else
-
-hatUI = Material("hat/hatui.png")
-
+	hatUI = Material("hat/hatui.png")
 end
 
 HAT_SELECT_ENTITY = 1
@@ -47,29 +43,31 @@ local vguiList = {}
 local concommand = concommand
 local concommandList = {}
 
-local newHook = table.Copy( hook )
+local newHook = table.Copy(hook)
 
-newHook.Add = function( name, hookName, func )
+newHook.Add = function(name, hookName, func)
 	table.insert(hookList, { name, hookName })
-	return hook.Add( name, hookName, func )
+	return hook.Add(name, hookName, func)
 end
 
-local newConcommand = table.Copy( hook )
+local newConcommand = table.Copy(concommand)
 
-newConcommand.Add = function( name, func )
+newConcommand.Add = function(name, func)
 	table.insert(concommandList, name)
-	return concommand.Add( name, func )
+	return concommand.Add(name, func)
 end
+
+local net = net
+local netList = {}
+local newNet
 
 local newVGUI
 if CLIENT then
-
 	local rmX, rmY = 0, 0
 
 	-- Global fix of RestoreCursorPosition for Mac OSX
 	olRestoreCursorPosition = olRestoreCursorPosition or RestoreCursorPosition
 	function RestoreCursorPosition()
-
 		gui.SetMousePos(rmX, rmY + 252 - 252)
 
 		--olRestoreCursorPosition() -- Try to restore it immediately.
@@ -82,38 +80,31 @@ if CLIENT then
 	end
 
 	function RememberCursorPosition()
-
 		rmX = gui.MouseX()
 		rmY = gui.MouseY()
-
 	end
 
-	newVGUI = table.Copy( vgui )
+	newVGUI = table.Copy(vgui)
 
 	-- Detect whenever a new vgui element is being created when HAT is running.
 	-- Add it to our list of vgui elements.
-	newVGUI.Create = function( className, parent, string )
+	newVGUI.Create = function(className, parent, string)
 		local vguiEle = vgui.Create(className, parent, string)
 		table.insert(vguiList, vguiEle)
 		return vguiEle
 	end
-
 end
 
 -- Function to [re]load HAT.
-local function loadHAT( cmd, args )
-
+local function loadHAT(cmd, args)
 	MsgN("Loading HAT Core...")
 
 	local olHook = hook
 	local olVGUI = vgui
 	local olConcommand = concommand
 	if CLIENT then
-		-- Overload the vgui table.
-		_G.vgui = newVGUI
-
 		-- Remove any existing hat vgui elements.
-		for k,v in pairs(vguiList) do
+		for k, v in pairs(vguiList) do
 			if v then
 				v:Remove()
 			end
@@ -123,16 +114,16 @@ local function loadHAT( cmd, args )
 
 	_G.hook = newHook
 
-	for k,v in pairs(hookList) do
-		hook.Remove( v[1], v[2] )
+	for k, v in pairs(hookList) do
+		hook.Remove(v[1], v[2])
 	end
 
 	hookList = {}
 
 	_G.concommand = newConcommand
 
-	for k,v in pairs(concommandList) do
-		concommand.Remove( v )
+	for k, v in pairs(concommandList) do
+		concommand.Remove(v)
 	end
 
 	concommandList = {}
@@ -144,23 +135,28 @@ local function loadHAT( cmd, args )
 		include("hat/vgui/dhatmenu.lua")
 		include("hat/vgui/dfilelist.lua")
 		include("hat/vgui/dfile.lua")
+		include("hat/vgui/dhatbutton.lua")
+		include("hat/vgui/dhattoolbar.lua")
 		include("hat/cl_hat.lua")
 		include("hat/cl_hat_onionskin.lua")
 		include("gquery.lua")
 	else
-		include("hat/hat.lua")
+		include("hat/sv_hat_data.lua")
+		include("hat/sv_hat_snapshot.lua")
+		include("hat/sv_hat_onionskin.lua")
+		include("hat/sv_hat_playback.lua")
+		include("hat/sv_hat_commands.lua")
 		include("gquery.lua")
 	end
 
 	_G.hook = olHook
 	_G.concommand = olConcommand
 	if CLIENT then
-		-- Put the old vgui table back.
+		-- Put the old vgui tables back.
 		_G.vgui = olVGUI
 	end
 
 	MsgN("Done Loading!")
-
 end
 
 if SERVER then
@@ -169,28 +165,35 @@ else
 	if loadedHAT then
 		loadHAT()
 	else
-		hook.Add( "InitPostEntity", "HATLoad", function() loadHAT() loadedHAT = true end )
+		hook.Add("InitPostEntity", "HATLoad", function()
+			loadHAT()
+			loadedHAT = true
+		end)
 	end
 end
 
-function unloadHAT( cmd, args )
-
-
-	for k,v in pairs(hookList) do
-		hook.Remove( v[1], v[2] )
+function unloadHAT(cmd, args)
+	for k, v in pairs(hookList) do
+		hook.Remove(v[1], v[2])
 	end
 
 	hookList = {}
 
-	for k,v in pairs(concommandList) do
-		concommand.Remove( v )
+	for k, v in pairs(concommandList) do
+		concommand.Remove(v)
 	end
 
 	concommandList = {}
 
 	if CLIENT then
+		-- Unregister net receivers before removing the panels they call into.
+		for k, v in pairs(netList) do
+			net.Receive(v, function() end)
+		end
+		netList = {}
+
 		-- Remove any existing hat vgui elements.
-		for k,v in pairs(vguiList) do
+		for k, v in pairs(vguiList) do
 			if v then
 				v:Remove()
 			end
@@ -198,18 +201,17 @@ function unloadHAT( cmd, args )
 		vguiList = {}
 	end
 
+	if SERVER and HAT and IsValid(HAT.onionEntity) then
+		HAT.onionEntity:Remove()
+	end
 end
 
 if CLIENT then
-
-concommand.Add("reload_hat_cl", loadHAT)
-concommand.Add("unload_hat_cl", unloadHAT)
-
+	concommand.Add("reload_hat_cl", loadHAT)
+	concommand.Add("unload_hat_cl", unloadHAT)
 else
-
-concommand.Add("reload_hat", loadHAT)
-concommand.Add("unload_hat", unloadHAT)
-
+	concommand.Add("reload_hat", loadHAT)
+	concommand.Add("unload_hat", unloadHAT)
 end
 
 MsgN("Done Initializing!")

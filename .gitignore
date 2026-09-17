@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# GLua / Garry's Mod tooling
+*.log
+.luacheckcache
+.luarc.json.bak
+addons/*/lua/bin/
+addons/*/data_static/
+addons/*/lua/**/*.tmp
+
+# Addon packaging output
+*.gma
+*.gma.temp

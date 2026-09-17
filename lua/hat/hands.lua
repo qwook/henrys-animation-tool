@@ -1,3 +1,5 @@
+-- hat_hands: server-side finger/hand bone-angle capture, apply, and lerp, across the
+-- different hand bone rigs (TF2, Zeno, HL2) HAT needs to support.
 
 hat_hands = {}
 

@@ -1,5 +1,6 @@
-
--- I need to develop some sort of pattern for writing this sort of stuff.
+-- Client-side onion-skin preview: on net "hat_onionskin", spawns/updates a ClientsideModel ghost
+-- showing another pose. Separate mechanism from the server-side ghost in sv_hat_onionskin.lua,
+-- which is the one actually shown while posing (this one is currently unused by cl_hat.lua).
 
 hatOS = {}
 

@@ -1,3 +1,3 @@
 # Henry's Animation Tool
 
-I recently dug this up on an old hard drive. I don't know if it's the latest version.
+A tool for making animations in the game "Garry's Mod." It utilizes a variant of Lua named gLua.
