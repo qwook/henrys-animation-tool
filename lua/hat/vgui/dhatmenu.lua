@@ -22,6 +22,15 @@ local FrozenIcon = Material("icon16/bullet_blue.png")
 CreateClientConVar("hat_frozenbones_visible", "1", true, false, "Show HAT's frozen-bone lock icons")
 CreateClientConVar("hat_dispname_visible", "1", true, false, "Show the selected prop's model name")
 
+-- Persisted height of the main panel (drag-resized from its title bar - see mainSheet's
+-- OnMousePressed below). Bottom edge always stays pinned to ScrH(); only the height changes.
+CreateClientConVar("hat_menu_height", "200", true, false, "Height of the HAT menu panel")
+
+-- hatskin.drawFrame's title bar strip is hardcoded to 27px (see hatskin.lua, drawFrame) - mirrored
+-- here so the drag hit-test and layout math agree with what's actually painted.
+local TITLE_BAR_HEIGHT = 27
+local MIN_MAINSHEET_HEIGHT = 150
+
 -- Forward-declared so PANEL:Init (defined above WorldEntitySelect's body further down) can close
 -- over it when wiring it up as frameHolder.OnRightClickResolved.
 local WorldEntitySelect
@@ -52,18 +61,47 @@ function PANEL:Init()
 
 	--menu:Open()
 
-	-- Tutorial Panel
-	self.tutorialBtn = vgui.Create("DButton", self)
-
-	self.tutorialBtn:SetText("Video Tutorial")
-	self.tutorialBtn.DoClick = function()
-		gui.OpenURL("https://www.youtube.com/watch?v=pUBdpmK37-I")
-	end
-
 	-- Main Panel
+	self.mainSheetHeight = math.max(GetConVar("hat_menu_height"):GetInt(), MIN_MAINSHEET_HEIGHT)
+
 	self.mainSheet = vgui.Create("DPanel", self)
 	self.mainSheet.Paint = function(self, w, h)
 		hatskin.drawFrame(0, 0, w, h)
+	end
+
+	-- Drag-to-resize: pressing anywhere in the title bar strip (the top TITLE_BAR_HEIGHT px,
+	-- painted by hatskin.drawFrame above) grows/shrinks the panel upward, keeping its bottom
+	-- edge pinned to ScrH(). Mirrors DFrameHolder's own MouseCapture-based dragging further down.
+	self.mainSheet.OnCursorMoved = function(pnl, x, y)
+		pnl:SetCursor((hatMenu.draggingResize or y <= TITLE_BAR_HEIGHT) and "sizens" or "arrow")
+	end
+
+	self.mainSheet.OnMousePressed = function(pnl, mousecode)
+		if mousecode ~= MOUSE_LEFT then return end
+		local _, y = pnl:CursorPos()
+		if y > TITLE_BAR_HEIGHT then return end
+
+		hatMenu.draggingResize = true
+		hatMenu.dragStartMouseY = gui.MouseY()
+		hatMenu.dragStartHeight = hatMenu.mainSheetHeight
+		pnl:MouseCapture(true)
+	end
+
+	self.mainSheet.OnMouseReleased = function(pnl, mousecode)
+		if not hatMenu.draggingResize then return end
+		hatMenu.draggingResize = false
+		pnl:MouseCapture(false)
+		pnl:SetCursor("arrow")
+		RunConsoleCommand("hat_menu_height", math.floor(hatMenu.mainSheetHeight))
+	end
+
+	self.mainSheet.Think = function(pnl)
+		if not hatMenu.draggingResize then return end
+
+		local delta = hatMenu.dragStartMouseY - gui.MouseY()
+		local maxHeight = ScrH() - hatMenu.menuBar:GetTall() - 10
+		hatMenu.mainSheetHeight = math.Clamp(hatMenu.dragStartHeight + delta, MIN_MAINSHEET_HEIGHT, maxHeight)
+		hatMenu:InvalidateLayout()
 	end
 
 	-- Frames Holder
@@ -741,21 +779,21 @@ end
 
 -----------------------------------------------------------]]
 function PANEL:PerformLayout(width, height)
-	self.tutorialBtn:SetPos(ScrW() - 105, ScrH() - 165)
-	self.tutorialBtn:SetSize(100, 25)
-
 	self:SetPos(0, 0)
 	self:SetSize(ScrW(), ScrH())
 
 	self.menuBar:SetPos(0, 0)
 	self.menuBar:SetSize(ScrW(), 25)
 
-	local mainSheetHeight = 200;
-	self.mainSheet:SetPos(0, ScrH() - 200)
-	self.mainSheet:SetSize(ScrW(), 200)
+	local mainSheetHeight = self.mainSheetHeight
+	self.mainSheet:SetPos(0, ScrH() - mainSheetHeight)
+	self.mainSheet:SetSize(ScrW(), mainSheetHeight)
 
 	self.frameHolder:SetPos(10, 36)
-	self.frameHolder:SetSize(ScrW() - 24, 110)
+	-- Grows/shrinks with the panel; 90 = the 36px header offset + the 45px the toolbar and its
+	-- padding take up below (mirrors the original fixed 36 + 110 + 9-gap + 40 + 5 layout at the
+	-- default 200px height).
+	self.frameHolder:SetSize(ScrW() - 24, mainSheetHeight - 90)
 
 	self.toolbar:SetPos(5, mainSheetHeight - 40 - 5)
 	self.toolbar:SetSize(ScrW() - 10, 40)
