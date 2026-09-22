@@ -6,12 +6,19 @@ HAT_VERSION = 4
 MsgN("Initiating Henry's Animation Tool ...")
 
 if SERVER then
+	AddCSLuaFile("hat/vgui/dhatscrollbar.lua")
+	AddCSLuaFile("hat/vgui/dhatscrubber.lua")
+	AddCSLuaFile("hat/vgui/dhatrow.lua")
 	AddCSLuaFile("hat/vgui/dframeholder.lua")
 	AddCSLuaFile("hat/vgui/dhatmenu.lua")
 	AddCSLuaFile("hat/vgui/dfile.lua")
 	AddCSLuaFile("hat/vgui/dfilelist.lua")
+	AddCSLuaFile("hat/vgui/dhatbutton.lua")
+	AddCSLuaFile("hat/vgui/dhatselectbox.lua")
+	AddCSLuaFile("hat/vgui/dhattoolbar.lua")
 	AddCSLuaFile("hat/cl_hat.lua")
 	AddCSLuaFile("hat/cl_hat_onionskin.lua")
+	AddCSLuaFile("hat/cl_hat_onionskin_visibility.lua")
 	AddCSLuaFile("hat/cl_hat_onboarding.lua")
 	AddCSLuaFile("hat/hatskin.lua")
 	AddCSLuaFile("autorun/hat_init.lua")
@@ -29,6 +36,9 @@ if SERVER then
 	util.AddNetworkString("hat_onionskin")
 	util.AddNetworkString("hat_error")
 	util.AddNetworkString("hat_loop")
+	util.AddNetworkString("hat_frame_easing")
+	util.AddNetworkString("hat_frame_duplicate")
+	util.AddNetworkString("hat_frozen_bones")
 else
 	hatUI = Material("hat/hatui.png")
 end
@@ -37,6 +47,18 @@ HAT_SELECT_ENTITY = 1
 HAT_SELECT_FACE = 2
 HAT_SELECT_L_HAND = 3
 HAT_SELECT_R_HAND = 4
+
+-- Desc: entity classes HAT can record/play an on/off state for (see snapShotFrame's `on` field
+-- and DHATMenu's On/Off buttons), each mapping to the method that actually flips it server-side.
+-- gmod_emitter's is a plain SetOn NetworkVar setter; gmod_thruster's Switch wraps SetOn with its
+-- start/stop thrust sound and wakes the physics object, so playback/the buttons call the entity's
+-- own named method rather than assuming SetOn everywhere. Shared (loaded both sides) so the
+-- client (which entities get the buttons) and the server (which method to call) read the same
+-- class list from one place.
+HAT_TOGGLEABLE_ON_OFF = {
+	gmod_emitter = "SetOn",
+	gmod_thruster = "Switch",
+}
 
 local hook = hook
 local hookList = {}
@@ -133,17 +155,23 @@ local function loadHAT(cmd, args)
 	-- todo: Grab file list and dynamically include files.
 	if CLIENT then
 		include("hat/hatskin.lua")
+		include("hat/vgui/dhatscrollbar.lua")
+		include("hat/vgui/dhatscrubber.lua")
+		include("hat/vgui/dhatrow.lua")
 		include("hat/vgui/dframeholder.lua")
 		include("hat/vgui/dhatmenu.lua")
 		include("hat/vgui/dfilelist.lua")
 		include("hat/vgui/dfile.lua")
 		include("hat/vgui/dhatbutton.lua")
+		include("hat/vgui/dhatselectbox.lua")
 		include("hat/vgui/dhattoolbar.lua")
+		include("hat/cl_hat_onionskin_visibility.lua")
 		include("hat/cl_hat.lua")
 		include("hat/cl_hat_onionskin.lua")
 		include("hat/cl_hat_onboarding.lua")
 		include("gquery.lua")
 	else
+		include("hat/hands.lua")
 		include("hat/sv_hat_data.lua")
 		include("hat/sv_hat_snapshot.lua")
 		include("hat/sv_hat_onionskin.lua")

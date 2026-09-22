@@ -58,6 +58,13 @@ concommand.Add("hat_select_object", function(pl, cmd, args)
 	HAT.selectFrame(objID, obj.cur or 1)
 end)
 
+-- Desc: "Stop Animating" from an entity label's right-click menu: deletes that pose object (and
+-- all its frames) without touching the entity itself.
+concommand.Add("hat_remove_entity", function(pl, cmd, args)
+	if not HAT.isWholeNumber(args[1]) then return end
+	HAT.removeObject(tonumber(args[1]))
+end)
+
 concommand.Add("hat_frame_select", function(pl, cmd, args)
 	HAT.stop()
 	if not HAT.isWholeNumber(args[1]) then return end
@@ -87,10 +94,26 @@ concommand.Add("hat_frame_remove", function(pl, cmd, args)
 	end
 end)
 
+concommand.Add("hat_frame_duplicate", function(pl, cmd, args)
+	HAT.stop()
+	if not HAT.isWholeNumber(args[1]) then return end
+	if HAT.currentObjId and HAT.objects[HAT.currentObjId] then
+		HAT.duplicateFrame(HAT.currentObjId, tonumber(args[1]))
+	end
+end)
+
 concommand.Add("hat_frame_setlength", function(pl, cmd, args)
 	HAT.stop()
 	if HAT.currentObjId and HAT.objects[HAT.currentObjId] then
 		HAT.setFrameLength(HAT.currentObjId, tonumber(args[1]), tonumber(args[2]))
+	end
+end)
+
+concommand.Add("hat_frame_seteasing", function(pl, cmd, args)
+	HAT.stop()
+	if not HAT.isWholeNumber(args[1]) then return end
+	if HAT.currentObjId and HAT.objects[HAT.currentObjId] then
+		HAT.setFrameEasing(HAT.currentObjId, tonumber(args[1]), args[2], args[3])
 	end
 end)
 
@@ -173,6 +196,27 @@ concommand.Add("hat_save", function(pl, cmd, args)
 
 	local toSave = { objects = table.Copy(HAT.objects), currentObjId = HAT.currentObjId, version = HAT_VERSION, loop = HAT.loop }
 
+	-- Desc: args[2] is the client's row display order (DHATMenu's save()), as comma-separated
+	-- server-side object keys. Stamped onto each object as `order` so DFrameHolder:Load can restore
+	-- row order; a save missing this (older client, or args[2] absent) just leaves `order` unset,
+	-- which DFrameHolder:Load treats as "put it at the bottom" for backwards compatibility.
+	MsgN(args[2])
+	if args[2] and args[2] ~= "" then
+		for i, key in ipairs(string.Explode(",", args[2])) do
+			local obj = toSave.objects[tonumber(key)]
+			if obj then obj.order = i end
+		end
+	end
+
+	-- Desc: HAT.newObject/HAT.fill always create a Face/LHand/RHand pose object alongside the body
+	-- one, whether or not the user ever poses it (see sv_hat_data.lua) - drop the ones that were
+	-- never touched (no frames added) instead of writing dead rows to the file.
+	for k, v in pairs(toSave.objects) do
+		if v.posetype and v.posetype ~= HAT_SELECT_ENTITY and #v.frames == 0 then
+			toSave.objects[k] = nil
+		end
+	end
+
 	local tempTrans = {}
 
 	for k, v in pairs(toSave.objects) do
@@ -219,12 +263,32 @@ concommand.Add("hat_load", function(pl, cmd, args)
 	local toLoad = file.Read(fileName .. ".txt", "DATA")
 	toLoad = util.JSONToTable(toLoad)
 
+	-- Desc: a sparse objects table (holes from dropped empty Face/LHand/RHand rows - see hat_save)
+	-- encodes as a JSON object rather than an array, so util.JSONToTable hands back string keys
+	-- ("5" instead of 5). HAT.objects = toLoad.objects below needs real numbers, since every other
+	-- HAT.objects[objID] lookup in this file/sv_hat_data.lua indexes with numbers.
+	do
+		local renumbered = {}
+		for k, v in pairs(toLoad.objects) do
+			renumbered[tonumber(k)] = v
+		end
+		toLoad.objects = renumbered
+	end
+
 	local tempTrans = {}
 
 	if toLoad.version == 2 then
 		for k, v in pairs(toLoad.objects) do
 			v.posetype = v.type
 			v.type = nil
+		end
+	end
+
+	-- Desc: drop untouched Face/LHand/RHand rows (no frames) - hat_save no longer writes these, but
+	-- older files still have them.
+	for k, v in pairs(toLoad.objects) do
+		if v.posetype and v.posetype ~= HAT_SELECT_ENTITY and #v.frames == 0 then
+			toLoad.objects[k] = nil
 		end
 	end
 
@@ -240,11 +304,16 @@ concommand.Add("hat_load", function(pl, cmd, args)
 	end
 
 	for k, v in pairs(toLoad.objects) do
-		if v.posetype and v.posetype ~= HAT_SELECT_ENTITY then
+		-- A face/hand record with no matching body (HAT_SELECT_ENTITY) record above to resolve
+		-- tempTrans[v.ent] is an orphan (e.g. an older save from before HAT.removeObject removed
+		-- every pose-type slot together) - drop it instead of crashing on the nil entity index.
+		if v.posetype and v.posetype ~= HAT_SELECT_ENTITY and tempTrans[v.ent] then
 			v.ent = tempTrans[v.ent]
 			v.cur = 1
 			HAT.entityTrans[v.ent] = HAT.entityTrans[v.ent] or {}
 			HAT.entityTrans[v.ent][v.posetype] = k
+		elseif v.posetype and v.posetype ~= HAT_SELECT_ENTITY then
+			toLoad.objects[k] = nil
 		end
 	end
 
@@ -252,11 +321,47 @@ concommand.Add("hat_load", function(pl, cmd, args)
 	HAT.objects = toLoad.objects
 	HAT.loop = toLoad.loop or false
 
+	-- Legacy-save handling: saves from before physbone freeze state was tracked have no
+	-- `physbones` table on any frame. Treat "no physbones data anywhere in the file" as "every
+	-- physbone was frozen on every frame" (this addon's original behavior), rather than leaving
+	-- bones unfrozen and having ragdolls go limp/flop on load.
+	local anyPhysbones = false
+	for _, v in pairs(HAT.objects) do
+		if not v.posetype or v.posetype == HAT_SELECT_ENTITY then
+			for _, frame in ipairs(v.frames) do
+				if frame.physbones then
+					anyPhysbones = true
+					break
+				end
+			end
+		end
+		if anyPhysbones then break end
+	end
+
+	if not anyPhysbones then
+		for _, v in pairs(HAT.objects) do
+			if (not v.posetype or v.posetype == HAT_SELECT_ENTITY) and IsValid(v.ent) then
+				for _, frame in ipairs(v.frames) do
+					local bones = HAT.getPhysBones(v.ent)
+					if bones then
+						for _, bone in pairs(bones) do
+							bone.frozen = false
+						end
+						frame.physbones = bones
+					end
+				end
+			end
+		end
+	end
+
 	local toSend = { currentObjId = HAT.currentObjId, objects = {}, loop = HAT.loop }
 	for k, v in pairs(HAT.objects) do
-		toSend.objects[k] = { frames = {}, ent = v.ent:EntIndex() }
+		-- Desc: v.order (set on load from a save's stored row order) has to be forwarded here too -
+		-- DFrameHolder:Load is the only place that reads it, and it only ever runs against this
+		-- broadcast's payload, never the raw file.
+		toSend.objects[k] = { frames = {}, ent = v.ent:EntIndex(), posetype = v.posetype, order = v.order }
 		for _, v in ipairs(v.frames) do
-			table.insert(toSend.objects[k].frames, v.length)
+			table.insert(toSend.objects[k].frames, { l = v.length, easing = v.easing, easingStrength = v.easingStrength })
 		end
 	end
 
@@ -284,6 +389,19 @@ concommand.Add("hat_new", function(pl, cmd, args)
 	net.Start("hat_send_data")
 	net.WriteTable({ objects = {}, loop = HAT.loop })
 	net.Broadcast()
+end)
+
+-- Desc: On/Off buttons drawn above a selected toggleable entity (gmod_emitter, gmod_thruster -
+-- see HAT_TOGGLEABLE_ON_OFF in hat_init.lua and DHATMenu:Paint) toggle the live entity directly;
+-- this is not itself an animation edit - the on/off state only enters the timeline via a snapshot
+-- (HAT.snapShotFrame), same as physbones/flexes/hands.
+concommand.Add("hat_entity_seton", function(pl, cmd, args)
+	if not HAT.isWholeNumber(args[1]) then return end
+
+	local ent = ents.GetByIndex(tonumber(args[1]))
+	if not HAT.isToggleableEntity(ent) then return end
+
+	HAT.setEntityOn(ent, args[2] == "1")
 end)
 
 concommand.Add("hat_debugprint", function()

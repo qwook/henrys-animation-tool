@@ -191,27 +191,32 @@ function hatskin.drawFrameTitleBar(x, y, w, h)
 
 end
 
+-- Desc: the frame's 9-sliced body panel on its own, with no title bar - used both by drawFrame
+-- (title bar + body) and standalone by anything that just needs a framed box, e.g. the emitter
+-- On/Off buttons' backing panel in dhatmenu.lua.
+function hatskin.drawFrameBody(x, y, w, h)
+	local leftW, rightW, border = 3, 3, 3
+	local midW = w - leftW - rightW
+	local midH = h - border * 2
+
+	hatskin.sprite.frameTL(x, y, leftW, border)
+	hatskin.sprite.frameT(x + leftW, y, midW, border)
+	hatskin.sprite.frameTR(x + w - rightW, y, rightW, border)
+
+	hatskin.sprite.frameL(x, y + border, leftW, midH)
+	hatskin.sprite.frameM(x + leftW, y + border, midW, midH)
+	hatskin.sprite.frameR(x + w - rightW, y + border, rightW, midH)
+
+	hatskin.sprite.frameBL(x, y + h - border, leftW, border)
+	hatskin.sprite.frameB(x + leftW, y + h - border, midW, border)
+	hatskin.sprite.frameBR(x + w - rightW, y + h - border, rightW, border)
+end
+
 function hatskin.drawFrame(x, y, w, h)
 	local titleBarH = 27
 	hatskin.drawFrameTitleBar(x, y, w, titleBarH)
 
-	local bodyY = y + titleBarH
-	local bodyH = h - titleBarH
-	local leftW, rightW, border = 3, 3, 3
-	local midW = w - leftW - rightW
-	local midH = bodyH - border * 2
-
-	hatskin.sprite.frameTL(x, bodyY, leftW, border)
-	hatskin.sprite.frameT(x + leftW, bodyY, midW, border)
-	hatskin.sprite.frameTR(x + w - rightW, bodyY, rightW, border)
-
-	hatskin.sprite.frameL(x, bodyY + border, leftW, midH)
-	hatskin.sprite.frameM(x + leftW, bodyY + border, midW, midH)
-	hatskin.sprite.frameR(x + w - rightW, bodyY + border, rightW, midH)
-
-	hatskin.sprite.frameBL(x, bodyY + bodyH - border, leftW, border)
-	hatskin.sprite.frameB(x + leftW, bodyY + bodyH - border, midW, border)
-	hatskin.sprite.frameBR(x + w - rightW, bodyY + bodyH - border, rightW, border)
+	hatskin.drawFrameBody(x, y + titleBarH, w, h - titleBarH)
 end
 
 function hatskin.drawFrameHolder(x, y, w, h)
@@ -346,6 +351,38 @@ function hatskin.drawGenericButton(text, width, height, color, depressed, hovere
 		surface.SetTextColor(color.r, color.g, color.b);
 		surface.DrawText(text, false);
 	end
+end
+
+-- Desc: an always-inset "select box" look (like drawGenericButton's depressed state, but
+-- permanent rather than only while the mouse is held down) for controls that open a dropdown of
+-- a current value, e.g. DHatSelectBox.
+function hatskin.drawSelectBox(text, width, height, color, hovered)
+	surface.SetDrawColor(255, 255, 255, 5);
+	surface.DrawRect(0, 0, width, height);
+	surface.SetDrawColor(0, 0, 0);
+	surface.DrawOutlinedRect(0, 0, width, height, 1);
+	surface.SetDrawColor(0, 0, 0, 110);
+	surface.DrawLine(1, 1, width - 2, 1);
+	surface.SetDrawColor(0, 0, 0, 100);
+	surface.DrawLine(1, 2, width - 2, 2);
+	surface.DrawLine(1, 1, 1, height - 2);
+
+	local r, g, b = color.r, color.g, color.b
+	if hovered then
+		r, g, b = r + 10, g + 10, b + 10
+	end
+
+	surface.SetFont("Arial18Glow1");
+	local textWidth, textHeight = surface.GetTextSize(text);
+	surface.SetTextPos(8, height / 2 - textHeight / 2 + 1);
+	surface.SetTextColor(0, 0, 0);
+	surface.DrawText(text, false);
+
+	surface.SetFont("Arial18");
+	local textWidth, textHeight = surface.GetTextSize(text);
+	surface.SetTextPos(7, height / 2 - textHeight / 2);
+	surface.SetTextColor(r, g, b);
+	surface.DrawText(text, false);
 end
 
 function hatskin.drawPlayButton(depressed, hovered)

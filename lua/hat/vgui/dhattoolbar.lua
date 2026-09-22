@@ -7,10 +7,12 @@ local vgui = vgui
 ( (_| |(  ___/| |   | ( ) ( ) |( (_| |
 `\__,_)`\____)(_)   (_) (_) (_)`\__,_)
 
-	DHatToolbar - lays out child panels in a horizontal row, left to right,
-	each with a fixed width and a shared height, separated by a gap and
-	inset by a padding. Add children with AddButton() rather than
-	vgui.Create(..., toolbar) so the toolbar knows each panel's width.
+	DHatToolbar - lays out child panels in a horizontal row, each with a fixed width and a shared
+	height, separated by a gap and inset by a padding. Buttons added with align "left" (the
+	default) are packed left to right from the left edge; buttons added with align "right" are
+	packed left to right anchored to the right edge, after every left button is laid out. Add
+	children with AddButton() rather than vgui.Create(..., toolbar) so the toolbar knows each
+	panel's width and side.
 
 --]]
 
@@ -35,13 +37,13 @@ end
 -- for layout at the given width. If width is omitted, the panel is left
 -- to size itself (e.g. a DHatButton autosizing to its label) and its
 -- width is read back at layout time, once the caller has finished
--- configuring it (SetText, etc).
+-- configuring it (SetText, etc). align is "left" (default) or "right".
 --
-function PANEL:AddButton( panelType, width )
+function PANEL:AddButton( panelType, width, align )
 
 	local panel = vgui.Create( panelType, self )
 
-	table.insert( self.Items, { panel = panel, w = width } )
+	table.insert( self.Items, { panel = panel, w = width, align = align } )
 
 	self:InvalidateLayout()
 
@@ -51,20 +53,38 @@ end
 
 function PANEL:PerformLayout( w, h )
 
-	local x = self:GetPadding()
+	local padding = self:GetPadding()
+	local gap = self:GetGap()
 	local buttonTall = self:GetButtonTall()
 
-	for _, item in ipairs( self.Items ) do
-		local itemWidth = item.w
+	-- Resolve auto-sized widths (and total them up) before laying anything out, since the right
+	-- group's starting x depends on its total width.
+	local rightWidth = 0
 
-		if not itemWidth then
+	for _, item in ipairs( self.Items ) do
+		if not item.w then
 			item.panel:InvalidateLayout( true )
-			itemWidth = item.panel:GetWide()
+			item.w = item.panel:GetWide()
 		end
 
-		item.panel:SetPos( x, ( h - buttonTall ) * 0.5 )
-		item.panel:SetSize( itemWidth, buttonTall )
-		x = x + itemWidth + self:GetGap()
+		if item.align == "right" then
+			rightWidth = rightWidth + item.w + gap
+		end
+	end
+
+	local x = padding
+	local rightX = w - padding - math.max(rightWidth - gap, 0)
+
+	for _, item in ipairs( self.Items ) do
+		item.panel:SetSize( item.w, buttonTall )
+
+		if item.align == "right" then
+			item.panel:SetPos( rightX, ( h - buttonTall ) * 0.5 )
+			rightX = rightX + item.w + gap
+		else
+			item.panel:SetPos( x, ( h - buttonTall ) * 0.5 )
+			x = x + item.w + gap
+		end
 	end
 
 end

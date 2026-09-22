@@ -89,6 +89,10 @@ function HAT.snapShotFrame( objID, frame )
 
 	if obj.posetype == HAT_SELECT_ENTITY then
 		obj.frames[frame].physbones = HAT.getPhysBones( obj.ent )
+
+		if HAT.isToggleableEntity( obj.ent ) then
+			obj.frames[frame].on = obj.ent:GetOn()
+		end
 	elseif obj.posetype == HAT_SELECT_FACE then
 		obj.frames[frame].flexes = HAT.getFlexes( obj.ent )
 		obj.frames[frame].eye = obj.ent:GetEyeTarget()

@@ -68,6 +68,8 @@ function HAT.clearOnionSkin( slot )
 end
 
 -- Desc: lets players physgun/reload through the onion-skin ghost instead of interacting with it.
+-- Also doubles as the tag cl_hat_onionskin_visibility.lua uses to find onion ghosts to hide,
+-- since only they set it.
 local function onionPhysOverload( pl, ent )
 	if IsValid(ent) and ent:GetNWBool( "ignore" ) then
 		return false
