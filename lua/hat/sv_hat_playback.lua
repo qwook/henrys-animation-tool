@@ -177,10 +177,12 @@ function HAT.seek( t )
 			HAT.applyPose( v, PlayFrame, delta )
 
 			-- Scrubbing settled here - restore this bone's real captured motion state instead of
-			-- leaving it force-frozen from applyPose (see HAT.restoreFreezeState). The pose is
-			-- interpolated between PlayFrame and PlayFrame+1, so a bone stays frozen unless it's
-			-- unfrozen in both.
-			HAT.restoreFreezeState( v, PlayFrame, true )
+			-- leaving it force-frozen from applyPose (see HAT.restoreFreezeState). Only when the
+			-- scrubber has actually landed exactly on PlayFrame's own start (delta 0, a real
+			-- captured pose, not a lerp) do a bone's stored frozen/unfrozen state get to apply -
+			-- anywhere mid-frame, lerped=true keeps every physbone force-frozen (too glitchy
+			-- otherwise), whether still dragging or just released there.
+			HAT.restoreFreezeState( v, PlayFrame, delta > 0 )
 		end
 
 	end

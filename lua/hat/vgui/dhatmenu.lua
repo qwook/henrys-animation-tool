@@ -484,8 +484,8 @@ function PANEL:Init()
 	end)
 
 	self.playOptions = vgui.Create("DFrame")
-	self.playOptions:SetSize(310, 100)
-	self.playOptions:SetTitle("Play Options")
+	self.playOptions:SetSize(310, 70)
+	self.playOptions:SetTitle("Playback Rate")
 	self.playOptions:Center()
 	self.playOptions:SetVisible(true)
 	self.playOptions:ShowCloseButton(true)
@@ -507,18 +507,6 @@ function PANEL:Init()
 		local snapped = math.Round(raw / PLAYRATE_GRID) * PLAYRATE_GRID
 		self:SetValue(snapped)
 		return self.Scratch:GetFraction(), y
-	end
-	-- Not check:SetConVar("hat_stopmotion"): hat_stopmotion is a server-only ConVar (see
-	-- sv_hat_data.lua), so the client has no local copy for SetConVar's GetConVarNumber-based
-	-- binding to read back - it kept resetting the checkbox to unchecked. Drive it manually
-	-- with RunConsoleCommand instead, like every other client->server action in this addon.
-	local check = vgui.Create("DCheckBoxLabel", self.playOptions)
-	check:SetWide(300)
-	check:SetPos(5, 55)
-	check:SetText("Stop Motion")
-	check:SetChecked(false)
-	check.OnChange = function(self, val)
-		RunConsoleCommand("hat_stopmotion", val and "1" or "0")
 	end
 	self.playOptions:SetVisible(false)
 	-- DHATMenu is itself a screen-covering MakePopup()'d panel (see PANEL:Show below), so
@@ -549,11 +537,30 @@ function PANEL:Init()
 	AddViewToggle("Display Selected Prop Name", "hat_dispname_visible")
 
 	self.optionsMenu = self.menuBar:AddMenu("Options")
-	self.optionsMenu:AddOption("Play Options", function()
+	self.optionsMenu:AddOption("Playback Rate", function()
 		self:Hide()
 		self.playOptions:MakePopup()
 		self.playOptions:SetVisible(true)
 	end)
+
+	-- hat_autofreeze_leafbones and hat_stopmotion are server-only ConVars (see sv_hat_data.lua), so
+	-- these can't use AddViewToggle's GetConVar(...):GetBool() readback - there's no client-side
+	-- copy to read. Driven manually via RunConsoleCommand instead, like every other client->server
+	-- action in this addon. Defaults match each ConVar's own default rather than reading it back.
+	local autoFreezeLeafBones = self.optionsMenu:AddOption("Auto-Freeze Leaf and Root Bones", function() end)
+	autoFreezeLeafBones:SetIsCheckable(true)
+	autoFreezeLeafBones:SetChecked(true)
+	autoFreezeLeafBones.OnChecked = function(pnl, checked)
+		RunConsoleCommand("hat_autofreeze_leafbones", checked and "1" or "0")
+	end
+
+	local stopMotion = self.optionsMenu:AddOption("Stop Motion Mode", function() end)
+	stopMotion:SetIsCheckable(true)
+	stopMotion:SetChecked(false)
+	stopMotion.OnChecked = function(pnl, checked)
+		RunConsoleCommand("hat_stopmotion", checked and "1" or "0")
+	end
+
 	self.optionsMenu:AddOption("Rebind HAT Menu Key", function()
 		HAT.ShowKeyCapture(HAT.SetMenuKey, "Press any key to set it as the HAT menu button.", true)
 	end)
@@ -581,6 +588,8 @@ end
 function PANEL:Hide()
 	self.menuBar:Hide()
 	self.fileMenu:Hide()
+	self.viewMenu:Hide()
+	self.optionsMenu:Hide()
 	RememberCursorPosition()
 	self:SetVisible(false)
 end

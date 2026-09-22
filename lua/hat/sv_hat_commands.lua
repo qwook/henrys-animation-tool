@@ -321,6 +321,25 @@ concommand.Add("hat_load", function(pl, cmd, args)
 	HAT.objects = toLoad.objects
 	HAT.loop = toLoad.loop or false
 
+	-- Legacy-save handling: saves written before the physbones.frozen field was renamed to
+	-- .motionEnabled (same value/meaning - IsMotionEnabled(), fed straight into EnableMotion()) still
+	-- have the old key. Migrate it so HAT.restoreFreezeState's v.motionEnabled reads don't come back
+	-- nil (which EnableMotion would treat as frozen) for every bone in an old file.
+	for _, v in pairs(HAT.objects) do
+		if not v.posetype or v.posetype == HAT_SELECT_ENTITY then
+			for _, frame in ipairs(v.frames) do
+				if frame.physbones then
+					for _, bone in pairs(frame.physbones) do
+						if bone.motionEnabled == nil and bone.frozen ~= nil then
+							bone.motionEnabled = bone.frozen
+							bone.frozen = nil
+						end
+					end
+				end
+			end
+		end
+	end
+
 	-- Legacy-save handling: saves from before physbone freeze state was tracked have no
 	-- `physbones` table on any frame. Treat "no physbones data anywhere in the file" as "every
 	-- physbone was frozen on every frame" (this addon's original behavior), rather than leaving
@@ -345,7 +364,7 @@ concommand.Add("hat_load", function(pl, cmd, args)
 					local bones = HAT.getPhysBones(v.ent)
 					if bones then
 						for _, bone in pairs(bones) do
-							bone.frozen = false
+							bone.motionEnabled = false
 						end
 						frame.physbones = bones
 					end

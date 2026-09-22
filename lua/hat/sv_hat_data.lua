@@ -12,6 +12,9 @@ HAT_DEFAULT_LENGTH = 0.25
 -- returns nil client-side and pressing Play throws before the playhead ever starts advancing.
 HAT_PlayRate = CreateConVar( "hat_playrate", 1, {FCVAR_SERVER_CAN_EXECUTE, FCVAR_REPLICATED} )
 HAT_StopMotion = CreateConVar( "hat_stopmotion", 0, {FCVAR_SERVER_CAN_EXECUTE, FCVAR_SERVER_CAN_EXECUTE} )
+-- Server-only like hat_stopmotion above (dhatmenu.lua's checkbox drives it via RunConsoleCommand,
+-- not SetConVar) since restoreFreezeState below - the only place this is read - runs server-side.
+HAT_AutoFreezeLeafBones = CreateConVar( "hat_autofreeze_leafbones", 1, {FCVAR_SERVER_CAN_EXECUTE} )
 
 HAT.entityTrans = {} -- Entity -> { [posetype] = objID }, the 4 pose-types per entity.
 HAT.objects = {} -- objID -> { frames, ent, cur, posetype, FrameStart, PlayFrame, Playing }
@@ -74,6 +77,54 @@ function HAT.isWholeNumber( num )
 	return math.ceil(num) == num
 end
 
+-- Desc: physbone indices (0-based, matching GetPhysicsObjectNum) with no physically-simulated
+-- descendant OR no physically-simulated ancestor, i.e. the tips of the ragdoll (hands, feet, head,
+-- ponytail end, etc.) and its root (pelvis/spine, typically physbone 0). Used by
+-- hat_autofreeze_leafbones so those extremities - and the bone everything else hangs off of - don't
+-- dangle/jitter from unfrozen physics when only some bones in between were manually frozen.
+--
+-- Deliberately computed in physbone space rather than full render-skeleton space: a ragdoll's
+-- skeleton has far more bones than physics objects (a whole finger chain shares one hand physbone,
+-- for example), so a leaf/root *render* bone doesn't necessarily correspond to a leaf/root
+-- *physbone* - it just walks up to whichever physbone happens to simulate it. Treating those as
+-- leaves/roots and translating each one to a physbone would mark unrelated, non-terminal physbones
+-- (the hand, the torso) as leaves/roots too.
+function HAT.getLeafBones( ent )
+	local physBoneCount = ent:GetPhysicsObjectCount()
+
+	local boneToPhysBone = {}
+	for i = 0, physBoneCount - 1 do
+		local boneID = ent:TranslatePhysBoneToBone( i )
+		if boneID and boneID ~= -1 then boneToPhysBone[boneID] = i end
+	end
+
+	local hasChild = {}
+	local hasParent = {}
+	for i = 0, physBoneCount - 1 do
+		local boneID = ent:TranslatePhysBoneToBone( i )
+		if boneID and boneID ~= -1 then
+			-- Walk up the render skeleton until we hit an ancestor bone that's itself simulated
+			-- (has its own physbone) - that's this physbone's physics parent.
+			local parent = ent:GetBoneParent( boneID )
+			while parent and parent ~= -1 and not boneToPhysBone[parent] do
+				parent = ent:GetBoneParent( parent )
+			end
+
+			if parent and parent ~= -1 and boneToPhysBone[parent] then
+				hasChild[ boneToPhysBone[parent] ] = true
+				hasParent[i] = true
+			end
+		end
+	end
+
+	local extremities = {}
+	for i = 0, physBoneCount - 1 do
+		if not hasChild[i] or not hasParent[i] then extremities[i] = true end
+	end
+
+	return extremities
+end
+
 -- Desc: re-applies a frame's captured per-bone motion state to the live entity, undoing the
 -- force-freeze HAT.applyPose uses while actively scrubbing/playing. Called whenever
 -- playback/scrubbing comes to rest (Stop, frame select, a scrub) so the user isn't left holding a
@@ -89,19 +140,59 @@ end
 --
 -- `lerped`, when true, means the entity's live pose sits interpolated between `frame` and
 -- `frame + 1` (playback/scrubbing stopped mid-tween) rather than resting exactly on `frame`'s own
--- captured pose (a plain frame click). In that case a bone is only left free to move if it was
--- unfrozen in *both* the source and target frame - frozen in either one wins - otherwise the still
--- half-interpolated bone would immediately fall/snap toward whichever frame it's unfrozen in.
+-- captured pose (a plain frame click). Mid-interpolation, every physbone is force-frozen regardless
+-- of either frame's stored motion state - letting any bone move while its pose is only a lerped
+-- in-between (not a real captured pose) was too glitchy (jitter/slapping as the constraint solver
+-- reacted to a target that's itself still sliding). Only once scrubbing rests exactly on a frame
+-- (lerped false) do a bone's actual stored frozen/unfrozen state take over.
+--
+-- Exception: `frame` being the object's last frame means there's no `frame + 1` to interpolate
+-- towards - HAT.applyPose holds frameFrom's own pose exactly in that case (see its `frameTo =
+-- frameFrom` fallback), so despite `lerped` being passed true (t past the frame's length), the live
+-- pose is really just frameFrom's real captured pose, not a lerp - treat it like lerped is false.
 function HAT.restoreFreezeState( obj, frame, lerped )
 	if not obj or not IsValid( obj.ent ) then return end
 
 	local frameFrom = obj.frames[frame]
 	if not frameFrom or not frameFrom.physbones then return end
 
+	if lerped and not obj.frames[frame + 1] then lerped = false end
+
 	local frameTo = lerped and obj.frames[frame + 1] or nil
 	local physbonesTo = frameTo and frameTo.physbones or nil
 
 	local lockedBoneIDs = {}
+
+	-- Zero out residual velocity on every physbone - not just the ones getting frozen below - and
+	-- briefly disable collisions while motion states settle, so a bone coming to rest here doesn't
+	-- carry over whatever velocity playback/scrubbing left it with or clip into a neighboring bone
+	-- mid-transition. Collision state is restored once every bone's final motion state is applied.
+	--
+	-- This runs on every scrub tick while dragging, potentially many times before the deferred
+	-- restore below ever fires - so the "original" collision state is captured into obj (surviving
+	-- across calls) only the first time collisions get disabled in a burst. Capturing fresh every
+	-- call would, on the second and later calls, read back "disabled" (left over from the previous
+	-- call's still-pending restore) as if it were the original state, permanently losing collisions
+	-- for the rest of the scrub.
+	local physCount = obj.ent:GetPhysicsObjectCount()
+	if not obj.freezeCollisionState then
+		obj.freezeCollisionState = {}
+		for i = 0, physCount - 1 do
+			local physobj = gQuery( obj.ent:GetPhysicsObjectNum( i ) )
+			if physobj then
+				obj.freezeCollisionState[i] = physobj:IsCollisionEnabled()
+			end
+		end
+	end
+
+	for i = 0, physCount - 1 do
+		local physobj = gQuery( obj.ent:GetPhysicsObjectNum( i ) )
+		if physobj then
+			physobj:SetVelocity( vector_origin )
+			physobj:SetAngleVelocity( vector_origin )
+			physobj:EnableCollisions( false )
+		end
+	end
 
 	local function apply( i, motionEnabled )
 		local physobj = gQuery( obj.ent:GetPhysicsObjectNum( i - 1 ) )
@@ -117,12 +208,16 @@ function HAT.restoreFreezeState( obj, frame, lerped )
 		end
 	end
 
-	for i, v in pairs( frameFrom.physbones ) do
-		local motionEnabled = v.frozen
-		local toV = physbonesTo and physbonesTo[i]
-		if toV then motionEnabled = motionEnabled and toV.frozen end
+	-- Not `lerped and false or v.motionEnabled` - the classic Lua ternary trap: when lerped is true
+	-- that becomes `false or v.motionEnabled`, which evaluates to v.motionEnabled regardless of
+	-- lerped, silently never forcing a freeze at all.
+	local function motionEnabledFor( v )
+		if lerped then return false end
+		return v.motionEnabled
+	end
 
-		apply( i, motionEnabled )
+	for i, v in pairs( frameFrom.physbones ) do
+		apply( i, motionEnabledFor( v ) )
 	end
 
 	-- A bone captured in the target frame but missing from the source frame's table (rare, but
@@ -130,10 +225,32 @@ function HAT.restoreFreezeState( obj, frame, lerped )
 	if physbonesTo then
 		for i, v in pairs( physbonesTo ) do
 			if not frameFrom.physbones[i] then
-				apply( i, v.frozen )
+				apply( i, motionEnabledFor( v ) )
 			end
 		end
 	end
+
+	-- Deferred one tick so the physics engine gets to simulate a step with motion states already
+	-- applied but collisions still off, rather than re-enabling collisions in the same tick a bone
+	-- was un-frozen/teleported and potentially popping it out of whatever it's now overlapping.
+	--
+	-- Named via timer.Create (not timer.Simple) so a call arriving mid-burst re-arms this same timer
+	-- instead of stacking a duplicate - only the last call in a scrub burst actually restores
+	-- collisions, using the state captured by the first.
+	timer.Create( "HAT_RestoreCollisions_" .. obj.ent:EntIndex(), 0.01, 1, function()
+		if not IsValid( obj.ent ) then return end
+
+		local savedState = obj.freezeCollisionState
+		obj.freezeCollisionState = nil
+		if not savedState then return end
+
+		for i = 0, physCount - 1 do
+			local physobj = gQuery( obj.ent:GetPhysicsObjectNum( i ) )
+			if physobj and savedState[i] ~= nil then
+				physobj:EnableCollisions( savedState[i] )
+			end
+		end
+	end )
 
 	HAT.syncFrozenBones( obj, lockedBoneIDs )
 end
@@ -307,7 +424,7 @@ function HAT.selectFrame( objID, frame )
 					-- Force-freeze (and clear any leftover velocity) while teleporting, same as
 					-- HAT.applyPose during playback/scrubbing - every physbone jumps to its target
 					-- independently in one tick, so re-enabling motion immediately (EnableMotion(
-					-- v.frozen)) let the constraint solver react to the resulting joint-position
+					-- v.motionEnabled)) let the constraint solver react to the resulting joint-position
 					-- discontinuity with a violent corrective impulse ("slapping"). Real motion state
 					-- is restored below via HAT.restoreFreezeState once the teleport has settled.
 					physobj
@@ -570,12 +687,15 @@ function HAT.setFrameEasing( objID, frame, easing, strength )
 end
 
 -- Desc: manually deletes an entity's pose objects and all their frames without removing the
--- entity itself - the "Stop Animating" entity-label option. Removes every pose-type slot for the
--- entity (body/face/l-hand/r-hand), not just the row that was right-clicked: the load path
--- (hat_load, sv_hat_commands.lua) only re-creates an entity from a saved body (HAT_SELECT_ENTITY)
--- record, so leaving orphaned face/hand records with no matching body record around would crash
--- on the next load. Mirrors what the EntityRemoved hook below already does automatically when the
--- entity itself is removed from the world.
+-- entity itself - the "Stop Animating" entity-label option. For the body row (HAT_SELECT_ENTITY)
+-- this removes every pose-type slot for the entity (body/face/l-hand/r-hand), not just the row
+-- that was right-clicked: the load path (hat_load, sv_hat_commands.lua) only re-creates an entity
+-- from a saved body record, so leaving orphaned face/hand records with no matching body record
+-- around would crash on the next load. Mirrors what the EntityRemoved hook below already does
+-- automatically when the entity itself is removed from the world.
+-- For a Face/LHand/RHand row, only that single slot is cleared - the body and the other two
+-- slots (and the underlying entity) are left alone; HAT.fill re-creates a blank slot for it if
+-- it's touched again later.
 function HAT.removeObject( objID )
 	local obj = HAT.objects[objID]
 
@@ -595,7 +715,10 @@ function HAT.removeObject( objID )
 		net.Broadcast()
 	end
 
-	if IsValid(obj.ent) and HAT.entityTrans[obj.ent] then
+	if obj.posetype ~= HAT_SELECT_ENTITY and IsValid(obj.ent) and HAT.entityTrans[obj.ent] then
+		HAT.entityTrans[obj.ent][obj.posetype] = nil
+		removeSlot( objID )
+	elseif IsValid(obj.ent) and HAT.entityTrans[obj.ent] then
 		for _, id in pairs( HAT.entityTrans[obj.ent] ) do
 			removeSlot( id )
 		end
